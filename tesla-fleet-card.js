@@ -8,7 +8,7 @@
 (function () {
   "use strict";
 
-  const CARD_VERSION = "1.1.12";
+  const CARD_VERSION = "1.1.13";
 
   const PATTERNS = {
     battery: "sensor.{p}battery",
@@ -117,10 +117,17 @@
   };
 
   const CARD_DEFAULTS = { accent: "#e82127", tpms_min: 38, default_car: 0, show_tpms: true, drive_speed: 1, show_vin: false, map_zoom: 15, location_tap: "map", preview: false };
-  const CAR_DEFAULTS = { name: "Tesla", model: "", integration: "auto", image: "", image_side: "", image_charging: "", image_side_plugged: "", image_top_plugged: "", image_top_charging: "", cable: "overlay", cable_path: "", image_climate: "", images: "", port_xy: "159,47", port_top_xy: "40,692", climate_anchors: {}, top_anchors: {}, defrost_glass: {}, calibrate: false, hide_seats: [], hide_climate: [], show_climate: [], paint: "", prefix: "", drive_motion: "auto", road: null, wheels: null, location_tap: "", entities: {} };
+  const CAR_DEFAULTS = { name: "Tesla", model: "", integration: "auto", image: "", image_side: "", image_charging: "", image_side_plugged: "", image_top_plugged: "", image_top_charging: "", cable: "overlay", cable_path: "", image_climate: "", images: "", port_xy: "159,47", port_top_xy: "40,692", climate_anchors: {}, top_anchors: {}, defrost_glass: {}, calibrate: false, hide_seats: [], hide_climate: [], show_climate: [], paint: "", prefix: "", drive_motion: "auto", road: null, wheels: null, location_tap: "", entities: {}, show_sentry: false };
 
   /* how long an assumed state is trusted before the real one wins back */
   const PEND_MS = 25000;
+  /* Tesla entities drop to "unavailable" for a moment while the car wakes.
+     For the physical states below, keep showing the last real reading for up
+     to this long rather than flicking the frunk shut or the car unlocked. */
+  const HOLD_MS = 5 * 60 * 1000;
+  const HOLD_KEYS = { frunk: 1, trunk: 1, charge_port: 1, windows_cover: 1, lock: 1, charger: 1 };
+  /* sentry is deliberately NOT held: Tesla makes it unavailable while the car
+     is driving, and holding it would show sentry on for the start of a drive */
 
   /* ---- driving view ---------------------------------------------------
      Measured off a 60fps screen recording of the Tesla app's driving screen
@@ -673,10 +680,13 @@
     charging: { charger: { state: "on" }, charging: { state: "on" },
                 charger_power: { state: "11" }, charging_rate: { state: "48" },
                 shift: { state: "P" }, location: { attributes: { speed: null } } },
+    /* Tesla makes sentry unavailable on the move, so the driving states do too */
     slow:     { shift: { state: "D" }, charger: { state: "off" },
-                charging: { state: "off" }, location: { attributes: { speed: 20 } } },
+                charging: { state: "off" }, location: { attributes: { speed: 20 } },
+                sentry: { state: "unavailable" } },
     fast:     { shift: { state: "D" }, charger: { state: "off" },
-                charging: { state: "off" }, location: { attributes: { speed: 100 } } },
+                charging: { state: "off" }, location: { attributes: { speed: 100 } },
+                sentry: { state: "unavailable" } },
     defrost:  { climate: { state: "heat_cool", attributes: { preset_mode: "defrost" } } },
     pet:      { climate: { state: "heat_cool", attributes: { preset_mode: "dog" } } },
     camp:     { climate: { state: "heat_cool", attributes: { preset_mode: "camp" } } },
@@ -912,6 +922,7 @@
     power: "M16.56 5.44l-1.45 1.45A5.97 5.97 0 0 1 18 12a6 6 0 0 1-6 6 6 6 0 0 1-6-6c0-2.17 1.16-4.06 2.88-5.12L7.44 5.44A7.96 7.96 0 0 0 4 12a8 8 0 0 0 8 8 8 8 0 0 0 8-8c0-2.72-1.36-5.12-3.44-6.56M13 3h-2v10h2V3z",
     horn: "M12 8H4a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h1v4a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-4h3l5 4V4l-5 4m9.5 4c0 1.71-.96 3.26-2.5 4V8c1.53.75 2.5 2.3 2.5 4z",
     flash: "M9 7c2.8 0 5 2.2 5 5s-2.2 5-5 5c-1.7 0-3-2.2-3-5s1.3-5 3-5m0-2C6 5 4 8.1 4 12s2 7 5 7c3.9 0 7-3.1 7-7s-3.1-7-7-7m8 2h5v2h-5V7m0 4h5v2h-5v-2m0 4h5v2h-5v-2z",
+    sentry: "M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5M12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5m0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z",
     pin: "M12 11.5A2.5 2.5 0 0 1 9.5 9 2.5 2.5 0 0 1 12 6.5 2.5 2.5 0 0 1 14.5 9a2.5 2.5 0 0 1-2.5 2.5M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z",
   };
 
@@ -1291,6 +1302,7 @@
     _st(key) {
       const id = this._car._entities[key];
       let s = (id && this._hass && this._hass.states[id]) || null;
+      if (s && HOLD_KEYS[key]) s = this._hold(id, s);
       const patch = this._preview && PREVIEW_PATCH[this._preview];
       const p = patch && patch[key];
       if (!p) return s;
@@ -1300,6 +1312,17 @@
       if ("state" in p) out.state = p.state;
       if (p.attributes) Object.assign(out.attributes, p.attributes);
       return out;
+    }
+    /* Remember each held entity's last real state, and stand it in for
+       "unavailable" / "unknown" while it is recent enough to trust. */
+    _hold(id, s) {
+      this._lastGood = this._lastGood || {};
+      if (s.state !== "unavailable" && s.state !== "unknown") {
+        this._lastGood[id] = { s: s, ts: Date.now() };
+        return s;
+      }
+      const g = this._lastGood[id];
+      return g && Date.now() - g.ts < HOLD_MS ? g.s : s;
     }
     _num(key) {
       const s = this._st(key);
@@ -1318,6 +1341,24 @@
       return String(s.state).toLowerCase() === "charging";   // tesla_fleet sensor
     }
     _plugged() { return this._is("charger", "on"); }
+    /* Why Sentry cannot be pressed right now, or "" when it can. Tesla does
+       not allow sentry while driving, and the integration reports the switch
+       as unavailable until the car is parked again. */
+    _sentryBlocked() {
+      const s = this._st("sentry");
+      if (!s) return "";
+      if (s.state !== "unavailable" && s.state !== "unknown") return "";
+      const sh = this._st("shift");
+      const g = sh ? String(sh.state).toUpperCase() : "";
+      return g === "D" || g === "R" || g === "N" ? "driving" : "unavailable";
+    }
+    _sentryOn() {
+      const real = this._is("sentry", "on");
+      const want = this._pendVal("sentry");
+      if (want === undefined) return real;
+      if (want === real) { delete this._pend.sentry; return real; }
+      return want;
+    }
     /* Defrost is a real switch on tesla_fleet; on tesla_custom it is a climate
        preset. Single source of truth for the button, the glass glow and the
        header badge. */
@@ -1804,6 +1845,8 @@
         const lb = el.querySelector(".lb") || el;
         const orig = restoreText !== undefined ? restoreText : lb.textContent;
         lb.textContent = "Tap again";
+        this._armLbl = this._armLbl || {};
+        this._armLbl[key] = orig;
         clearTimeout(this._armT[key]);
         this._armT[key] = setTimeout(() => {
           this._arm[key] = false;
@@ -1815,6 +1858,10 @@
       this._arm[key] = false;
       el.classList.remove("armed");
       clearTimeout(this._armT[key]);
+      /* the timer that would have put the label back has just been cancelled,
+         so put it back here, or "Tap again" stays on the button for good */
+      const lb2 = el.querySelector(".lb") || el;
+      if (this._armLbl && this._armLbl[key] !== undefined) lb2.textContent = this._armLbl[key];
       return true;
     }
 
@@ -1958,6 +2005,12 @@
   .abtn:active { background:#242424; }
   .abtn.armed { color:#e0a63c; } .abtn.armed svg { fill:#e0a63c; }
   .abtn.on svg { fill:#4fa3ff; } .abtn.on { color:#4fa3ff; }
+  /* Sentry on: a slow dark red pulse, so it reads as "watching" not "selected".
+     It STARTS red: starting grey meant a tap showed nothing for over a
+     second, which read as the tap not having worked. */
+  @keyframes sentryPulse { 0%, 100% { color:#c62828; fill:#c62828; } 50% { color:#a8a8a8; fill:#d9d9d9; } }
+  #aSentry.on, #aSentry.on svg { animation:sentryPulse 3s ease-in-out infinite; }
+  #aSentry.blocked { opacity:.4; cursor:default; }
 
   .rows { margin-top:6px; border-top:1px solid #262626; }
   .row { border-bottom:1px solid #262626; }
@@ -2039,6 +2092,7 @@
     <button class="abtn" id="aPort">${svgIcon(ICONS.plug)}<span class="lb">Port</span></button>
     <button class="abtn" id="aStart">${svgIcon(ICONS.power)}<span class="lb">Start</span></button>
     <button class="abtn" id="aVent">${svgIcon(ICONS.vent)}<span class="lb">Vent</span></button>
+    ${car.show_sentry ? `<button class="abtn" id="aSentry">${svgIcon(ICONS.sentry)}<span class="lb">Sentry</span></button>` : ""}
   </div>
 
   <div class="rows">
@@ -2126,6 +2180,31 @@
         if (this._confirm("vent", q("aVent"), "Vent")) this._toggleCover("windows_cover");
       });
       q("aPort").addEventListener("click", () => this._toggleCover("charge_port"));
+      const aSen = q("aSentry");
+      if (aSen) aSen.addEventListener("click", () => {
+        const s = this._st("sentry");
+        if (!s) return;
+        /* blocked: send nothing, and answer the tap with the reason */
+        const why = this._sentryBlocked();
+        if (why) {
+          const lb = aSen.querySelector(".lb");
+          if (lb && why === "driving") {
+            lb.textContent = "Park first";
+            clearTimeout(this._sentryWhyT);
+            this._sentryWhyT = setTimeout(() => { this._sentryWhyT = null; if (this._hass) this._update(); }, 2500);
+          }
+          return;
+        }
+        /* a quick extra tap straight after a command must not undo it: the
+           button has just changed state under the finger, so for a moment
+           another tap is far more likely a double tap than a decision */
+        if (Date.now() - (this._sentryAt || 0) < 3000) return;
+        const on = this._sentryOn();
+        if (on && !this._confirm("sentry", aSen, "Sentry")) return;
+        this._sentryAt = Date.now();
+        this._call("switch", on ? "turn_off" : "turn_on", { entity_id: s.entity_id });
+        this._setPend("sentry", !on);
+      });
 
       // resting <-> controls view
       const restW = q("restWrap");
@@ -3144,7 +3223,7 @@
       const flap = q("portFlap");
       if (flap) flap.style.display = plugged || portOpen2 ? "" : "none";
       const se = q("sentryEye");
-      if (se) se.style.display = this._is("sentry", "on") ? "" : "none";
+      if (se) se.style.display = this._sentryOn() ? "" : "none";
       const bBolt = q("battBolt");
       if (bBolt) bBolt.style.display = charging ? "" : "none";
       q("battTxt").style.color = charging ? "#4fd07a" : "";
@@ -3214,6 +3293,25 @@
       // action row states
       const vent = q("aVent");
       if (vent && !this._arm.vent) vent.classList.toggle("on", this._is("windows_cover", "open"));
+      const sen = q("aSentry");
+      if (sen) {
+        sen.style.display = this._st("sentry") ? "" : "none";
+        const why = this._sentryBlocked();
+        sen.classList.toggle("blocked", !!why);
+        sen.title = why === "driving" ? "Tesla does not allow Sentry while driving"
+                  : why ? "Sentry is unavailable right now" : "";
+        if (why) {
+          sen.classList.remove("on");
+          const lb = sen.querySelector(".lb");
+          if (lb && !this._sentryWhyT) lb.textContent = why === "driving" ? "Driving" : "Unavailable";
+        } else if (!this._arm.sentry) {
+          sen.classList.toggle("on", this._sentryOn());
+          /* say what is happening until the car confirms it */
+          const want = this._pendVal("sentry");
+          const lb = sen.querySelector(".lb");
+          if (lb) lb.textContent = want === undefined ? "Sentry" : want ? "Enabling" : "Disabling";
+        }
+      }
 
       // climate row
       const climS = this._st("climate");
@@ -3555,6 +3653,7 @@
             ${["", "red", "grey", "silver", "white", "black", "blue"].map((p) => `<option value="${p}" ${((c.paint || "") === p) ? "selected" : ""}>${p || "-"}</option>`).join("")}
           </select></label>
           <label>Entity prefix <input data-i="${i}" data-k="prefix" value="${c.prefix || ""}" placeholder="e.g. buddy_"></label>
+          <label>Sentry button <input type="checkbox" style="flex:none" data-i="${i}" data-k="show_sentry" ${c.show_sentry ? "checked" : ""}></label>
           ${this._showGen(c) ? `<label>Generation <select data-i="${i}" data-k="generation">
             ${this._genOptions(c).map((g) => `<option value="${g}" ${((c.generation || "") === g) ? "selected" : ""}>${g ? esc(GEN_LABEL[g] || g) : "-"}</option>`).join("")}
           </select></label>
@@ -3570,7 +3669,10 @@
         inp.addEventListener("change", () => {
           const i = parseInt(inp.dataset.i, 10);
           const car = this._config.cars[i];
-          car[inp.dataset.k] = inp.value;
+          if (inp.type === "checkbox") {
+            /* off is the default, so it is the absence of the key */
+            if (inp.checked) car[inp.dataset.k] = true; else delete car[inp.dataset.k];
+          } else car[inp.dataset.k] = inp.value;
           /* issue #1: picking a paint did nothing, because a stored `color`
              (the old "+ Add car" always wrote blue) shadowed it at render time.
              The picker now CLEARS color rather than writing a hex, so the UI

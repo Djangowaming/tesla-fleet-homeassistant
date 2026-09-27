@@ -499,6 +499,17 @@ function customStates(p) {
       /* back to Live: the fake must fall away completely */
       pvClick(c, "off");
       R.pv_off_clears = c._preview;
+      /* the driving previews show Sentry as Tesla does on a real drive */
+      c._config.cars[0].show_sentry = true; c._cars[0].show_sentry = true;
+      c._built = false; c._build(); c._update();
+      pvClick(c, "fast");
+      const sb = c.shadowRoot.getElementById("aSentry");
+      R.pv_fast_sentry = sb ? [sb.classList.contains("blocked"), sb.querySelector(".lb").textContent] : null;
+      /* a preview click rebuilds the card, so find the button again */
+      pvClick(c, "parked");
+      const sb2 = c.shadowRoot.getElementById("aSentry");
+      R.pv_parked_sentry = sb2 ? [sb2.classList.contains("blocked"), sb2.querySelector(".lb").textContent] : null;
+      pvClick(c, "off");
       R.pv_no_service_calls = calls;
     })();
 
@@ -871,6 +882,121 @@ function customStates(p) {
       R.gen_field_selected = sel ? sel.value : null;
       if (sel) { sel.value = ""; sel.dispatchEvent(new Event("change")); }
       R.gen_cleared_removes_key = emitted.cars[0].generation === undefined;
+    })();
+
+    /* ---- the Sentry button (from discussion #6) ------------------------
+       Opt-in per car, so nobody's action row changes on update. Turning it
+       on is one tap; turning it off, which leaves the car unwatched, asks
+       for a second tap like Honk and Vent do. */
+    (() => {
+      const car = { name: "S", model: "Model Y", paint: "red", prefix: "s_" };
+      const st = customStates("s_");
+      R.sentry_absent_by_default = !!mkCard([car], st).shadowRoot.getElementById("aSentry");
+      const calls = [];
+      const c = mkCard([Object.assign({ show_sentry: true }, car)], st);
+      c.hass = { states: st, callService: (d, sv, data) => { calls.push([d, sv, data.entity_id]); return Promise.resolve(); } };
+      const b = () => c.shadowRoot.getElementById("aSentry");
+      R.sentry_present_when_on = !!b();
+      R.sentry_off_not_lit = !!b() && b().classList.contains("on");
+      if (b()) b().click();
+      R.sentry_on_one_tap = calls.slice();
+      /* a stray second tap straight away must not turn it back off */
+      if (b()) b().click();
+      R.sentry_double_tap_ignored = calls.length;
+      c._sentryAt = 0;
+      /* shown on at once, before Tesla echoes it back */
+      R.sentry_optimistic_on = !!b() && b().classList.contains("on");
+      /* the car agrees: the assumption retires and the real state carries on */
+      st["switch.s_sentry_mode"] = Object.assign({}, st["switch.s_sentry_mode"], { state: "on" });
+      c.hass = Object.assign({}, c._hass, { states: st });
+      R.sentry_pend_retired = !!(c._pend && c._pend.sentry);
+      calls.length = 0;
+      if (b()) b().click();
+      R.sentry_off_first_tap = [calls.length, b() ? b().querySelector(".lb").textContent : null];
+      if (b()) b().click();
+      R.sentry_off_second_tap = calls.slice();
+      /* Nick: after the second tap it still said "Tap again". It should say
+         what it is doing, then settle once the car agrees */
+      R.sentry_label_while_off_pending = b() ? b().querySelector(".lb").textContent : null;
+      /* and after turning it off, a third tap straight away must not turn it
+         back on, which is what happened on Patsy on the first live test */
+      if (b()) b().click();
+      R.sentry_no_bounce_after_off = calls.length;
+      st["switch.s_sentry_mode"] = Object.assign({}, st["switch.s_sentry_mode"], { state: "off" });
+      c.hass = Object.assign({}, c._hass, { states: st });
+      R.sentry_label_settles = b() ? b().querySelector(".lb").textContent : null;
+      /* a car without the entity gets no button, even when asked for */
+      const st2 = customStates("n_");
+      delete st2["switch.n_sentry_mode"];
+      const c2 = mkCard([{ name: "N", model: "Model Y", paint: "red", prefix: "n_", show_sentry: true }], st2);
+      const b2 = c2.shadowRoot.getElementById("aSentry");
+      R.sentry_hidden_without_entity = b2 ? b2.style.display : null;
+    })();
+    /* Nick: while driving it "simply should not be able to be pressed (and
+       should say why)". Tesla reports the switch unavailable on the move. */
+    (() => {
+      const st = customStates("d_");
+      st["switch.d_sentry_mode"] = Object.assign({}, st["switch.d_sentry_mode"], { state: "on" });
+      const calls = [];
+      const c = mkCard([{ name: "D", model: "Model Y", paint: "red", prefix: "d_", show_sentry: true }], st);
+      c.hass = { states: st, callService: () => { calls.push(1); return Promise.resolve(); } };
+      const drive = Object.assign({}, st);
+      drive["switch.d_sentry_mode"] = { entity_id: "switch.d_sentry_mode", state: "unavailable", attributes: {} };
+      drive["sensor.d_shift_state"] = { entity_id: "sensor.d_shift_state", state: "D", attributes: {} };
+      c.hass = Object.assign({}, c._hass, { states: drive });
+      const b = c.shadowRoot.getElementById("aSentry");
+      R.sentry_driving = b ? [b.classList.contains("blocked"), b.classList.contains("on"),
+                              b.querySelector(".lb").textContent] : null;
+      if (b) b.click();
+      R.sentry_driving_tap = [calls.length, b ? b.querySelector(".lb").textContent : null];
+      /* parked again: pressable, and it was not held on through the drive */
+      clearTimeout(c._sentryWhyT); c._sentryWhyT = null;
+      c.hass = Object.assign({}, c._hass, { states: st });
+      R.sentry_parked_again = b ? [b.classList.contains("blocked"), b.querySelector(".lb").textContent] : null;
+    })();
+    /* the same leftover "Tap again" was on Honk, Start and Vent too */
+    (() => {
+      const st = customStates("k_");
+      const c = mkCard([{ name: "K", model: "Model Y", paint: "red", prefix: "k_" }], st);
+      c.hass = { states: st, callService: () => Promise.resolve() };
+      const h = c.shadowRoot.getElementById("aHonk");
+      h.click(); h.click();
+      R.honk_label_restored = h.querySelector(".lb").textContent;
+    })();
+    /* the editor tick box writes true, and unticking removes the key */
+    (() => {
+      ed._rendered = false;
+      ed.hass = { states: {} };
+      ed.setConfig({ type: "custom:tesla-fleet-card",
+        cars: [{ name: "T", model: "Model Y", paint: "red", prefix: "t_" }] });
+      const cb = ed.shadowRoot.querySelector('[data-k="show_sentry"]');
+      R.sentry_editor_box = cb ? cb.type : null;
+      if (cb) { cb.checked = true; cb.dispatchEvent(new Event("change")); }
+      R.sentry_editor_ticked = emitted.cars[0].show_sentry;
+      const cb2 = ed.shadowRoot.querySelector('[data-k="show_sentry"]');
+      if (cb2) { cb2.checked = false; cb2.dispatchEvent(new Event("change")); }
+      R.sentry_editor_unticked = "show_sentry" in emitted.cars[0];
+    })();
+
+    /* ---- held states over "unavailable" (from discussion #6) -----------
+       Tesla entities go unavailable for a moment while the car wakes. The
+       frunk must not flick shut on screen when it is open on the drive. */
+    (() => {
+      const st = customStates("h_");
+      st["cover.h_frunk"] = Object.assign({}, st["cover.h_frunk"], { state: "open" });
+      st["binary_sensor.h_online"] = { entity_id: "binary_sensor.h_online", state: "on", attributes: {} };
+      const c = mkCard([{ name: "H", model: "Model Y", paint: "red", prefix: "h_" }], st);
+      R.hold_open_seen = c._is("frunk", "open");
+      const blip = Object.assign({}, st);
+      blip["cover.h_frunk"] = { entity_id: "cover.h_frunk", state: "unavailable", attributes: {} };
+      blip["binary_sensor.h_online"] = { entity_id: "binary_sensor.h_online", state: "unavailable", attributes: {} };
+      c.hass = { states: blip };
+      R.hold_frunk_held = c._is("frunk", "open");
+      /* online is NOT held: an unavailable car must still read as Offline */
+      R.hold_online_not_held = c._is("online", "on");
+      /* and the hold runs out: a stale reading is not kept forever */
+      if (c._lastGood) c._lastGood["cover.h_frunk"].ts -= 6 * 60 * 1000;
+      R.hold_expires = c._is("frunk", "open");
     })();
 
     return R;
@@ -1396,6 +1522,8 @@ function customStates(p) {
     r.pv_charging_cable, [true, "#4fd07a", "10 8"]);
   check("plugged, no power: blue and static",
     r.pv_plugged_cable, [true, "#4a9eff", ""]);
+  check("100 km/h shows Sentry as Driving", r.pv_fast_sentry, [true, "Driving"]);
+  check("Parked gives Sentry back",          r.pv_parked_sentry, [false, "Sentry"]);
   check("the faked speed reaches the status line",
     r.pv_slow_sub.indexOf("20") >= 0, true);
   check("Live clears the fake",          r.pv_off_clears, null);
@@ -1525,6 +1653,34 @@ function customStates(p) {
   check("an answered car keeps the field", r.gen_field_sticks, true);
   check("the answer is shown as selected", r.gen_field_selected, "classic");
   check("clearing it removes the key",     r.gen_cleared_removes_key, true);
+
+  console.log("\nthe Sentry button");
+  check("not there unless show_sentry",        r.sentry_absent_by_default, false);
+  check("there with show_sentry",              r.sentry_present_when_on, true);
+  check("not lit while sentry is off",         r.sentry_off_not_lit, false);
+  check("turning on takes one tap",            r.sentry_on_one_tap, [["switch", "turn_on", "switch.s_sentry_mode"]]);
+  check("and lights at once",                  r.sentry_optimistic_on, true);
+  check("the assumption retires when the car agrees", r.sentry_pend_retired, false);
+  check("turning off asks for a second tap",   r.sentry_off_first_tap, [0, "Tap again"]);
+  check("and the second tap turns it off",     r.sentry_off_second_tap, [["switch", "turn_off", "switch.s_sentry_mode"]]);
+  check("a quick second tap after turning on is ignored", r.sentry_double_tap_ignored, 1);
+  check("a quick tap after turning off does not turn it back on", r.sentry_no_bounce_after_off, 1);
+  check("while turning off it says Disabling", r.sentry_label_while_off_pending, "Disabling");
+  check("and says Sentry once the car agrees",  r.sentry_label_settles, "Sentry");
+  check("driving: dimmed, not lit, and says Driving", r.sentry_driving, [true, false, "Driving"]);
+  check("a tap while driving sends nothing and says why", r.sentry_driving_tap, [0, "Park first"]);
+  check("parked again, it can be pressed",     r.sentry_parked_again, [false, "Sentry"]);
+  check("Honk loses its Tap again once confirmed", r.honk_label_restored, "Honk");
+  check("no entity, no button",                r.sentry_hidden_without_entity, "none");
+  check("the editor has a tick box",           r.sentry_editor_box, "checkbox");
+  check("ticking it writes true",              r.sentry_editor_ticked, true);
+  check("unticking removes the key",           r.sentry_editor_unticked, false);
+
+  console.log("\nheld states while the car wakes");
+  check("the open frunk is seen",              r.hold_open_seen, true);
+  check("an unavailable blip keeps it open",   r.hold_frunk_held, true);
+  check("online is not held",                  r.hold_online_not_held, false);
+  check("the hold runs out after five minutes", r.hold_expires, false);
 
   await browser.close();
   console.log("\n" + passed + " passed, " + failures.length + " failed");
