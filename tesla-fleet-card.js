@@ -333,6 +333,7 @@
   }
 
   const PACK_ROAD = {
+    "models/y/black/app":        { angle: -21.9, lines: [[93.3, 2.2]] },
     "models/y/red/app":          { angle: -21.9, lines: [[93.3, 2.2]] },
     "models/y/white/app":        Y_JUNIPER_SIDE.road,
     "models/y-juniper/blue/app": Y_JUNIPER_SIDE.road,
@@ -475,6 +476,8 @@
      case is what makes the other two answers worth believing. Eyeballing had
      by that point produced three different verdicts on the same wheel. */
   const PACK_WHEELS = {
+    "models/y/black/app":        { lift: 1.26, front: [106.9, 77.9, 15.65, 10.99, 109.3],
+                                   rear: [185.2, 47.8, 0.85] },
     "models/y/red/app":          { lift: 1.26, front: [106.9, 77.9, 15.65, 10.99, 109.3],
                                    rear: [185.2, 47.8, 0.85] },
     "models/y/white/app":        Y_JUNIPER_SIDE.wheels,
@@ -643,6 +646,7 @@
      because paint is what the user actually configured and a wrong colour is
      the more jarring of the two. */
   const PACKS_SHIPPED = [
+    { model: "Model Y", paint: "black", dir: "models/y/black/app", gen: "classic" },
     { model: "Model Y", paint: "red", dir: "models/y/red/app", gen: "classic" },
     { model: "Model Y", paint: "white", dir: "models/y/white/app", gen: "juniper" },
     { model: "Model Y", paint: "blue", dir: "models/y-juniper/blue/app", gen: "juniper" },
@@ -772,13 +776,24 @@
      cable where a pack has one, otherwise mapped across by fraction of the
      car's body box -- these are all the same Tesla top-down render. */
   const PACK_CLIM_PORT = {
-    "models/3/grey/app":       [61, 461],
-    "models/y/red/app":        [44, 501],
-    "models/y/white/app":      [56, 477],
+    "models/y/black/app":        [44, 501],
+    "models/3/grey/app":         [61, 461],
+    "models/y/red/app":          [44, 501],
+    "models/y/white/app":        [56, 477],
     "models/y-juniper/blue/app": [60, 499]
   };
 
   const PACK_CABLE_PATH = {
+    "models/y/black/app":
+      "M 74.8 93.3 C 75.7 93.1 78.1 92.5 79.8 92.1 C 81.4 91.7 83.1 91.4 84.8 91.0 " +
+      "C 86.4 90.7 88.1 90.4 89.8 90.1 C 91.5 89.8 93.1 89.5 94.8 89.2 " +
+      "C 96.5 88.9 98.2 88.6 99.8 88.3 C 101.5 88.0 103.2 87.8 104.9 87.4 " +
+      "C 106.5 87.1 108.2 86.6 109.8 86.2 C 111.4 85.7 113.1 85.4 114.7 84.8 " +
+      "C 116.2 84.2 117.9 83.8 119.1 82.8 C 120.2 81.7 120.9 80.1 121.6 78.6 " +
+      "C 122.3 77.2 122.8 75.7 123.2 74.1 C 123.7 72.6 124.0 71.1 124.3 69.5 " +
+      "C 124.6 68.0 124.8 66.4 125.2 64.8 C 125.5 63.3 125.9 61.7 126.3 60.2 " +
+      "C 126.7 58.7 127.1 57.2 127.7 55.8 C 128.2 54.3 128.7 52.7 129.5 51.4 " +
+      "C 130.4 50.0 132.3 48.4 132.8 47.8",
     "models/3/grey/app":
       "M 63.2 105.1 C 63.9 104.9 65.8 104.2 67.1 103.8 C 68.5 103.4 69.8 103.0 71.1 102.7 " +
       "C 72.5 102.2 73.8 101.8 75.1 101.4 C 76.4 101.1 77.8 100.7 79.1 100.4 " +
