@@ -8,7 +8,7 @@
 (function () {
   "use strict";
 
-  const CARD_VERSION = "1.1.13";
+  const CARD_VERSION = "1.1.14";
 
   const PATTERNS = {
     battery: "sensor.{p}battery",
