@@ -8,7 +8,7 @@
 (function () {
   "use strict";
 
-  const CARD_VERSION = "1.1.14";
+  const CARD_VERSION = "1.1.15";
 
   const PATTERNS = {
     battery: "sensor.{p}battery",
@@ -924,8 +924,6 @@
   }
 
   const ICONS = {
-    lock: "M12 17a2 2 0 0 0 2-2 2 2 0 0 0-2-2 2 2 0 0 0-2 2 2 2 0 0 0 2 2m6-9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2h1V6a5 5 0 0 1 5-5 5 5 0 0 1 5 5v2h1m-6-5a3 3 0 0 0-3 3v2h6V6a3 3 0 0 0-3-3z",
-    unlock: "M12 17a2 2 0 0 0 2-2 2 2 0 0 0-2-2 2 2 0 0 0-2 2 2 2 0 0 0 2 2m6-9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2h9V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3H7a5 5 0 0 1 5-5 5 5 0 0 1 5 5v2h1z",
     fan: "M12 11a1 1 0 0 1 1 1 1 1 0 0 1-1 1 1 1 0 0 1-1-1 1 1 0 0 1 1-1m.5-9c4.5 0 4.61 3.57 2.25 4.75-.99.49-1.43 1.54-1.62 2.47.48.2.9.51 1.22.91 5.66-3 9.65.63 9.65 3.37 0 4.5-3.57 4.6-4.75 2.25-.5-1-1.56-1.44-2.49-1.62-.21.48-.52.89-.92 1.21 3.03 5.66-.61 9.66-3.34 9.66-4.5 0-4.61-3.58-2.25-4.76.98-.49 1.42-1.53 1.62-2.45-.49-.2-.92-.52-1.24-.92-5.66 3.02-9.63-.64-9.63-3.37 0-4.5 3.57-4.6 4.75-2.25.49.99 1.53 1.43 2.45 1.62.2-.48.52-.9.92-1.22-3.01-5.65.63-9.65 3.38-9.65z",
     bolt: "M11 15H6l7-14v8h5l-7 14v-8z",
     vent: "M3 5h18v2H3V5m0 4h18v2H3V9m0 4h18v2H3v-2m0 4h18v2H3v-2z",
@@ -2010,7 +2008,6 @@
   .copSeg button.on { background:#3a3a3a; color:#fff; }
   .calib { position:absolute; top:4px; right:4px; z-index:3; pointer-events:none;
     background:#000000cc; color:#ffd47f; font-size:11px; padding:3px 9px; border-radius:8px; }
-  .tapa.armed text.olbl { fill:#e0a63c !important; }
 
   .acts { display:flex; justify-content:space-around; margin:2px 8px 4px; }
   .abtn { display:flex; flex-direction:column; align-items:center; gap:5px;
@@ -2232,10 +2229,8 @@
       const trunkG = this.shadowRoot.getElementById("trunkTap");
       const lockG = this.shadowRoot.getElementById("lockTap");
       if (frunkG) frunkG.addEventListener("click", () => {
-        const lbl = this.shadowRoot.getElementById("frunkLbl");
         if (!this._arm.frunk) {
           this._arm.frunk = true; frunkG.classList.add("armed");
-          lbl.textContent = "Tap again";
           clearTimeout(this._armT.frunk);
           this._armT.frunk = setTimeout(() => { this._arm.frunk = false; frunkG.classList.remove("armed"); this._update(); }, 3000);
           return;
@@ -2244,10 +2239,8 @@
         this._toggleCover("frunk");
       });
       if (trunkG) trunkG.addEventListener("click", () => {
-        const lbl = this.shadowRoot.getElementById("trunkLbl");
         if (!this._arm.trunk) {
           this._arm.trunk = true; trunkG.classList.add("armed");
-          lbl.textContent = "Tap again";
           clearTimeout(this._armT.trunk);
           this._armT.trunk = setTimeout(() => { this._arm.trunk = false; trunkG.classList.remove("armed"); this._update(); }, 3000);
           return;
@@ -2682,6 +2675,11 @@
       const [tkx, tky] = anchor(TA, "trunk", [180, baked ? 658 : 612]);
       const tpmsFrontY = baked ? 150 : 120;
       const tpmsRearY = baked ? 640 : 650;
+      /* The frunk, trunk and lock glyphs are NOT drawn here: the top-down
+         photo already shows them, and the card's own labels on top read as
+         doubles. Only the invisible tap targets are laid over the image -
+         the handlers below read and arm these groups, so the groups stay
+         even though nothing in them is visible. */
       return `
 <div class="imgWrap">
   <img id="topImg" class="carImg" src="${tsrc}" alt="">
@@ -2692,18 +2690,13 @@
     <g paint-order="stroke" stroke="#000000aa" stroke-width="3">
       <g id="frunkTap" class="tapa">
         <rect x="${fkx - 70}" y="${fky - 78}" width="140" height="130" rx="16" fill="#000" opacity="0" stroke="none"/>
-        <text id="frunkLbl" class="olbl" x="${fkx}" y="${fky}" text-anchor="middle"
-              font-size="20" font-weight="600" fill="#f2f3f4">Open</text>
       </g>
       <g id="trunkTap" class="tapa">
         <rect x="${tkx - 70}" y="${tky - 72}" width="140" height="120" rx="16" fill="#000" opacity="0" stroke="none"/>
-        <text id="trunkLbl" class="olbl" x="${tkx}" y="${tky}" text-anchor="middle"
-              font-size="20" font-weight="600" fill="#f2f3f4">Open</text>
       </g>
     </g>
     <g id="lockTap" class="tapa">
       <circle cx="${lkx}" cy="${lky}" r="30" fill="#000" opacity="0"/>
-      <g id="lockIcon" transform="translate(${lkx - 14},${lky - 14}) scale(1.15)"></g>
     </g>
     ${boltArea}
     <g id="sentryEye" style="display:none">
@@ -3084,12 +3077,6 @@
 </div>`;
     }
 
-    _setLockIcon(locked) {
-      const g = this.shadowRoot.getElementById("lockIcon");
-      if (!g) return;
-      g.innerHTML = '<path d="' + (locked ? ICONS.lock : ICONS.unlock) + '" fill="#dfe0e2" opacity=".95"/>';
-    }
-
     _update() {
       const q = (id) => this.shadowRoot.getElementById(id);
 
@@ -3213,19 +3200,6 @@
       }
 
       // on-car states
-      const lockS = this._st("lock");
-      const locked = lockS && lockS.state === "locked";
-      this._setLockIcon(locked);
-      const frunkOpen = this._is("frunk", "open");
-      const trunkOpen = this._is("trunk", "open");
-      if (!this._arm.frunk) {
-        const fl = q("frunkLbl");
-        if (fl) { fl.textContent = frunkOpen ? "Close" : "Open"; fl.style.fill = frunkOpen ? "#e0a63c" : ""; }
-      }
-      if (!this._arm.trunk) {
-        const tl = q("trunkLbl");
-        if (tl) { tl.textContent = trunkOpen ? "Close" : "Open"; tl.style.fill = trunkOpen ? "#e0a63c" : ""; }
-      }
       const plugged = this._plugged();
       const portOpen2 = this._is("charge_port", "open");
       const bolt = q("boltP");
